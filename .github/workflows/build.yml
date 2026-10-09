@@ -1,0 +1,85 @@
+name: Build Lum1na (dummy UI)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build unsigned app + IPA
+    # Prefer a runner image that ships the iOS 26 SDK. macos-26 if present,
+    # otherwise macos-15 and select the latest stable Xcode below.
+    runs-on: macos-26
+    env:
+      SCHEME: Lum1naUI
+      PROJECT: Lum1naUI.xcodeproj
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No-op on macos-26 (already latest); useful if the job falls back to macos-15.
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          echo "----- SDKs -----"
+          xcodebuild -showsdks
+
+      - name: Show schemes
+        run: xcodebuild -list -project "$PROJECT"
+
+      - name: Build (generic iOS device, no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build 2>&1 | tee xcodebuild.log
+
+      - name: Summarize compiler errors
+        if: failure()
+        run: |
+          echo "----- first errors in xcodebuild.log -----"
+          grep -nE "error:|ld: |fatal error|Undefined symbol|duplicate symbol|No such module" xcodebuild.log | head -n 120 || true
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/${SCHEME}.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App bundle not found at $APP_PATH"; exit 1
+          fi
+          rm -rf pkg && mkdir -p pkg/Payload
+          cp -R "$APP_PATH" pkg/Payload/
+          echo "----- .app bundle contents -----"
+          ls -la "$APP_PATH"
+          if [ -f "$APP_PATH/VT323-Regular.ttf" ]; then echo "VT323 font bundled: OK"; else echo "::warning::VT323-Regular.ttf not found in app bundle"; fi
+          plutil -p "$APP_PATH/Info.plist" || true
+          (cd pkg && zip -qr ../Lum1na-Dummy.ipa Payload)
+          echo "----- IPA contents -----"
+          unzip -l Lum1na-Dummy.ipa | head -n 20
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lum1na-Dummy-ipa
+          path: Lum1na-Dummy.ipa
+          if-no-files-found: warn
+
+      - name: Upload xcodebuild log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: warn

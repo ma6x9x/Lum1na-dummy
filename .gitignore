@@ -1,0 +1,22 @@
+## macOS
+.DS_Store
+
+## Xcode user data / build output
+xcuserdata/
+*.xcuserstate
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Swift Package Manager
+.swiftpm/
+.build/
+
+## Preview tooling (kept out of the repo)
+preview/node_modules/
+preview/renders/*.mp4
+preview/frames/
